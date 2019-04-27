@@ -1,7 +1,7 @@
 #!/usr/local/bin/python
 # coding:utf-8
 
-from des_cracker import config_master
+import config_master
 import socket
 import json
 from DES.des_algorithm import *
@@ -15,7 +15,8 @@ class client:
         self.initial()
         self.key = key
         self.plain_text = plain_text
-        self.encrypt()
+        self.encrypt_test()
+        self.send_cipher()
 
 
     def initial(self):
@@ -32,40 +33,45 @@ class client:
             print('connected with master:', node_name, host_ip, host_port)
 
 
-    def encrypt(self):
+    def encrypt_test(self):
         d = des()
-        r = d.encrypt(key, text)
+        r = d.encrypt(self.key, self.plain_text)
         self.cipher = ' '.join(format(ord(x), 'b') for x in r)
-        self.recover = d.decrypt(key, r)
+        self.recover = d.decrypt(self.key, r)
 
     def send_cipher(self):
         cipher = dict()
         cipher['cipher'] = self.cipher
+        cipher['finished'] = "False"
         # master = self.node_list[0]
         cipher_encode = json.dumps(cipher).encode('utf-8')
-        self.server_map[0].sendall(cipher_encode)
+        self.server_map[self.node_list[0]].sendall(cipher_encode)
+        print('self.cipher',self.cipher)
+        print('cipher_encode', cipher_encode)
+
         while True:
-            res = self.server_map[0].recv(self.max_data_size)
+            # print(1111)
+            res = self.server_map[self.node_list[0]].recv(self.max_data_size)
             by = b''
             by += res
             data = json.loads(by.decode("utf-8"))
             if data["succ"] == "True":
                 pred_key = data['pred_key']
-                mes = {}
-                mes['recv'] = "True"
-                mes['finished'] = "False"
-                mes = json.dumps(mes).encode('utf-8')
-                self.server_map[0].sendall(mes)
+                # mes = {}
+                # mes['recv'] = "True"
+                # mes['finished'] = "False"
+                # mes = json.dumps(mes).encode('utf-8')
+                # self.server_map[0].sendall(mes)
                 if pred_key == self.key:
                     print(pred_key)
                     print('finished')
                     break
 
         mes_fin = {}
-        mes_fin['finised'] = "True"
+        mes_fin['finished'] = "True"
         mes_fin = json.dumps(mes_fin).encode('utf-8')
-        self.server_map[0].sendall(mes_fin)
+        self.server_map[self.node_list[0]].sendall(mes_fin)
 
 
 if __name__ == '__main__':
-    client_ = client(1024, "ningfeiw", "Hello wo")
+    client_ = client(1024, "secret_k", "Hello wo")

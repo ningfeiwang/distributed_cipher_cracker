@@ -3,8 +3,9 @@
 
 import sys
 
-import des_cracker.config_master as config
+import config_nodes
 # import RHT
+import config_master
 import socket
 import json
 import threading
@@ -15,9 +16,11 @@ class server_nodes:
     def __init__(self, server_name, max_data_size):
         self.max_data_size = max_data_size
         self.server_name = server_name
-        self.node_info = config.nodes
-        self.node_list = config.nodes_list
+        self.node_info = config_nodes.nodes
+        self.node_list = config_nodes.nodes_list
         self.server_map_nodes = dict()
+        self.master_info = config_master.nodes
+        self.master_list = config_master.nodes_list
         self.server_map_client = dict()
         self.initial_listen()
         self.initial_connection()
@@ -36,10 +39,10 @@ class server_nodes:
             print('connected with nodes:', node_name, host_ip, host_port)
 
     def initial_listen(self):
-        for node_name in self.node_info:
+        for node_name in self.master_info:
             self.server_map_client[node_name] = None
-            host_ip = self.node_info[node_name]["ip"]
-            host_port = self.node_info[node_name]["port"]
+            host_ip = self.master_info[node_name]["ip"]
+            host_port = self.master_info[node_name]["port"]
             if node_name == self.server_name:
                 self.server_map_client[node_name] = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 self.server_map_client[node_name].setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -57,7 +60,7 @@ class server_nodes:
             if i < length - 1:
                 map_[self.node_list[i]] = [i * block_size, (i + 1) * block_size]
             else:
-                map_[self.node_list[i]] = [i * block_size, length]
+                map_[self.node_list[i]] = [i * block_size, range_]
         return map_
 
     def handling(self, conn, cipher, range_, server_name):
@@ -66,14 +69,16 @@ class server_nodes:
             mes['range_'] = range_
             mes['cipher'] = cipher
             mes = json.dumps(mes).encode('utf-8')
-            self.server_map[server_name].sendall(mes)
-            res = self.server_map[server_name].recv(self.max_data_size)
+            self.server_map_nodes[server_name].sendall(mes)
+            res = self.server_map_nodes[server_name].recv(self.max_data_size)
             by = b''
             by += res
             data = json.loads(by.decode("utf-8"))
+            print(data)
             if data['succ'] == "True":
-                key = data['key']
-            conn.sendall(res)
+                key = data['pred_key']
+                conn.sendall(res)
+                break
             # res = conn.recv(self.max_data_size)
             # by = b''
             # by += res
@@ -108,7 +113,7 @@ class server_nodes:
             assign_map = self.assign_split(64)
             thread_list = []
             for i in range(len(self.node_list)):
-                thread_list.append(threading.Thread(target=self.handling), args = (conn, cipher, assign_map[self.node_list[i]], self.node_list[i]))
+                thread_list.append(threading.Thread(target=self.handling, args = (conn, cipher, assign_map[self.node_list[i]], self.node_list[i])))
                 thread_list[i].daemon = False
             for i in range(len(self.node_list)):
                 thread_list[i].start()
@@ -116,7 +121,7 @@ class server_nodes:
 
     def server_start(self):
         while True:
-            conn, addr = self.server_map[self.server_name].accept()
+            conn, addr = self.server_map_client[self.server_name].accept()
             print("connect with ", conn)
             new_thread = threading.Thread(target = self.processing, args = (conn, addr))
             new_thread.daemon = True
@@ -124,5 +129,5 @@ class server_nodes:
 
 if __name__ == '__main__':
     global_var = 0
-    server = server_nodes(sys.argv[1], int(sys.argv[2]), int(sys.argv[3]))
+    server = server_nodes(sys.argv[1], int(sys.argv[2]))
     server.server_start()
