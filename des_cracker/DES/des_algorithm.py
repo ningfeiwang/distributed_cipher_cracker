@@ -245,3 +245,5 @@ if __name__ == '__main__':
     r2 = d.decrypt(key, r)
     print("Ciphered: %r" % cipher)
     print("Deciphered: ", r2)
+
+    print(string_to_bit_array(key))

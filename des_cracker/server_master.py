@@ -24,6 +24,7 @@ class server_nodes:
         self.server_map_client = dict()
         self.initial_listen()
         self.initial_connection()
+        self.succ = 0
 
     def initial_connection(self):
         for node_name in self.node_info:
@@ -48,26 +49,44 @@ class server_nodes:
                 self.server_map_client[node_name].setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 # print(host_ip)
                 self.server_map_client[node_name].bind((host_ip, int(host_port)))
-                self.server_map_client[node_name].listen(5)
+                self.server_map_client[node_name].listen(80)
                 print("server starts")
                 print("ip and port: " + host_ip + ":" + host_port)
 
     def assign_split(self, range_):
         map_ = dict()
+        range_ -= 1
         length = len(self.node_list)
-        block_size = range_ / length
+        block_size = (18446744073709551616 - 0) / length
         for i in range(length):
             if i < length - 1:
-                map_[self.node_list[i]] = [i * block_size, (i + 1) * block_size]
+                map_[self.node_list[i]] = [0 + i * block_size, 0 + (i + 1) * block_size]
             else:
-                map_[self.node_list[i]] = [i * block_size, range_]
+                map_[self.node_list[i]] = [0 + i * block_size, 18446744073709551616]
+        print ('map_', map_)
         return map_
+    # def assign_split(self, range_):
+    #     map_ = dict()
+    #     range_ -= 1
+    #     length = len(self.node_list)
+    #     block_size = (8315161632581877759 - 8315161628286910464) / length
+    #     for i in range(length):
+    #         if i < length - 1:
+    #             map_[self.node_list[i]] = [8315161628286910464 + i * block_size, 8315161628286910464 + (i + 1) * block_size]
+    #         else:
+    #             map_[self.node_list[i]] = [8315161628286910464 + i * block_size, 8315161632581877759]
+    #             8315161629989035883
+    #     print ('map_', map_)
+    #     return map_
 
-    def handling(self, conn, cipher, range_, server_name):
+    def handling(self, conn, cipher, range_, server_name, key):
         while True:
             mes = {}
-            mes['range_'] = range_
+            mes['left'] = range_[0]
+            mes['right'] = range_[-1]
+
             mes['cipher'] = cipher
+            mes['key'] = key
             mes = json.dumps(mes).encode('utf-8')
             self.server_map_nodes[server_name].sendall(mes)
             res = self.server_map_nodes[server_name].recv(self.max_data_size)
@@ -76,8 +95,13 @@ class server_nodes:
             data = json.loads(by.decode("utf-8"))
             print(data)
             if data['succ'] == "True":
-                key = data['pred_key']
-                conn.sendall(res)
+                mess = {}
+                mess['succ'] = 'True'
+                mess['pred_key'] = key
+                # key = data['pred_key']
+                mess = json.dumps(mess).encode('utf-8')
+                conn.sendall(mess)
+                print('send to client: ', mess)
                 break
             # res = conn.recv(self.max_data_size)
             # by = b''
@@ -110,10 +134,11 @@ class server_nodes:
                         self.server_map_nodes[server_].sendall(mes)
                 break
             cipher = data['cipher']
+            key = data['key']
             assign_map = self.assign_split(64)
             thread_list = []
             for i in range(len(self.node_list)):
-                thread_list.append(threading.Thread(target=self.handling, args = (conn, cipher, assign_map[self.node_list[i]], self.node_list[i])))
+                thread_list.append(threading.Thread(target=self.handling, args = (conn, cipher, assign_map[self.node_list[i]], self.node_list[i], key)))
                 thread_list[i].daemon = False
             for i in range(len(self.node_list)):
                 thread_list[i].start()

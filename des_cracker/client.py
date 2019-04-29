@@ -5,6 +5,7 @@ import config_master
 import socket
 import json
 from DES.des_algorithm import *
+import time
 
 class client:
     def __init__(self, max_data_size, key, plain_text):
@@ -43,11 +44,13 @@ class client:
         cipher = dict()
         cipher['cipher'] = self.cipher
         cipher['finished'] = "False"
+        cipher['key'] = self.key
         # master = self.node_list[0]
         cipher_encode = json.dumps(cipher).encode('utf-8')
         self.server_map[self.node_list[0]].sendall(cipher_encode)
         print('self.cipher',self.cipher)
         print('cipher_encode', cipher_encode)
+        start = time.time()
 
         while True:
             # print(1111)
@@ -66,7 +69,8 @@ class client:
                     print(pred_key)
                     print('finished')
                     break
-
+        end = time.time()
+        print('time: ', str(end - start))
         mes_fin = {}
         mes_fin['finished'] = "True"
         mes_fin = json.dumps(mes_fin).encode('utf-8')
