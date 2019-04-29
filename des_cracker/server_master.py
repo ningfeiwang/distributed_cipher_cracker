@@ -10,6 +10,17 @@ import socket
 import json
 import threading
 import os
+from collections import deque
+import subprocess
+
+def write_log(message):
+    global global_var
+    _sequence = global_var
+    global_var += 1
+    with open('/home/niw217/new/log/fail.log', 'a') as file:
+        file.write(str(_sequence) + '\n')
+        file.write(message)
+        file.write('\n')
 
 
 class server_nodes:
@@ -25,6 +36,38 @@ class server_nodes:
         self.initial_listen()
         self.initial_connection()
         self.succ = 0
+        self.fail = deque([])
+        self.contribution = dict()
+        self.thread_fail = threading.Thread(target=self.checking)
+        self.thread_fail.daemon = True
+        self.thread_fail.start()
+
+    def checking(self):
+        while True:
+            stop_sign = 0
+            for node in self.node_list:
+                host_ip = self.node_info[node]["ip"]
+                res = subprocess.call(['ping', '-c', '3', host_ip])
+                if res == 0:
+                    continue
+                else:
+                    if self.contribution[node]:
+                        continue
+                    self.fail.append(node)
+                    write_log(node)
+
+            if len(self.contribution.keys()) != len(self.node_list):
+                continue
+            else:
+                for node in self.contribution:
+                    if self.contribution[node]:
+                        stop_sign = 1
+                        continue
+                    else:
+                        stop_sign = 0
+                        break
+            if stop_sign == 1:
+                break
 
     def initial_connection(self):
         for node_name in self.node_info:
@@ -82,6 +125,7 @@ class server_nodes:
     def handling(self, conn, cipher, range_, server_name, key):
         while True:
             mes = {}
+            self.contribution[server_name] = False
             mes['left'] = range_[0]
             mes['right'] = range_[-1]
 
@@ -94,7 +138,9 @@ class server_nodes:
             by += res
             data = json.loads(by.decode("utf-8"))
             print(data)
+            self.contribution[server_name] = True
             if data['succ'] == "True":
+                # self.contribution[server_name] = True
                 mess = {}
                 mess['succ'] = 'True'
                 mess['pred_key'] = key
