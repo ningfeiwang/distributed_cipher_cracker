@@ -7,8 +7,9 @@ import config_nodes as config
 import socket
 import json
 import threading
-from DES.des_algorithm import *
-import b2s
+# from DES.des_algorithm import *
+# import b2s
+import numpy as np
 import os
 
 
@@ -32,9 +33,45 @@ class server_nodes:
         self.node_info = config.nodes
         self.node_list = config.nodes_list
         self.server_name = server_name
-        self.d = des()
+        # self.d = des()
         self.initial()
         self.succ = 0
+        self.buffer = []
+        self.lock = threading.Lock()
+        self.thread_processing = threading.Thread(target=self.thread_processing)
+        self.thread_processing.daemon = True
+        self.thread_processing.start()
+
+    def thread_processing(self):
+        while True:
+            if self.succ == 1:
+                break
+            if self.buffer != []:
+                print(22222)
+                self.lock.acquire()
+                copime = self.buffer[:]
+                self.buffer = []
+                self.lock.release()
+            else:
+                continue
+
+            for i in copime:
+                if int(i) == int(self.pri_key):
+                    print('finished')
+                    self.succ = 1
+            if self.succ == 1:
+                print('finish')
+                break
+    #
+    # def thread_receiving(self):
+    #     while True:
+    #         res = self.server_map_nodes['discriminator'].recv(self.max_data_size)
+    #         by = b''
+    #         by += res
+    #         data = json.loads(by.decode("utf-8"))
+    #         if data['succ'] == True:
+    #             self.succ = 1
+    #             break
 
     def initial(self):
         self.server_map = dict()
@@ -110,26 +147,40 @@ class server_nodes:
             by += data_re
             data = json.loads(by.decode("utf-8"))
             print("data", data)
-            cipher = data['cipher']
-            # range_ = data['range_']
-            ori_key = data['key']
-            ori_key_list = string_to_bit_array(ori_key)
-            k_con = ''
-            for k in ori_key_list:
-                k_con += str(k)
-            tmp_key_con = k_con[:]
-            k_con = binaryToDecimal(k_con)
+            self.pri_key = data['private']
+            copime = data['copime']
 
-            left = data['left']
-            right = data['right']
-            split_res = self.split_thread(left, right)
-            self.thread_list = []
-            for i in range(8):
-                self.thread_list.append(threading.Thread(target = self.main, args = (split_res[i], tmp_key_con, k_con, conn)))
-                self.thread_list[i].daemon = False
-            for i in range(8):
-                self.thread_list[i].start()
+            self.lock.acquire()
+            # print(11111)
+            self.buffer += copime
+            self.lock.release()
+            # print(self.buffer)
 
+
+            if self.succ == 1:
+                data = {}
+                print('finished')
+                data['succ'] = "True"
+                data['pred_key'] = self.pri_key
+                print('succ')
+                mes = json.dumps(data).encode('utf-8')
+                conn.sendall(mes)
+
+
+
+
+            # for i in copime:
+            #     if int(i) == int(self.pri_key):
+            #         data = {}
+            #         data['succ'] = "True"
+            #         data['pred_key'] = i
+            #         print('succ')
+            #         mes = json.dumps(data).encode('utf-8')
+            #         conn.sendall(mes)
+            #         self.succ = 1
+            # if self.succ == 1:
+            #     print('finish')
+            #     break
 
     def server_start(self):
         while True:
@@ -141,7 +192,7 @@ class server_nodes:
 
 if __name__ == '__main__':
     # print(len('0111001101100101011000110111001000000000000000000000000000000000'))
-    # binaryToDecimal('0111001101100101111111111111111111111111111111111111111111111111')
+    # binaryToDecimal('0111001101100101011000110111001000000000000000000000000000000000')
     global_var = 0
     server = server_nodes(sys.argv[1], int(sys.argv[2]))
     server.server_start()

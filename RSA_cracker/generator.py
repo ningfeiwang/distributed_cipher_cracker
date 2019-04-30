@@ -12,6 +12,7 @@ import threading
 import os
 from collections import deque
 import subprocess
+import time
 
 def write_log(message):
     global global_var
@@ -41,6 +42,22 @@ class server_nodes:
         # self.thread_fail = threading.Thread(target=self.checking)
         # self.thread_fail.daemon = True
         # self.thread_fail.start()
+        self.thread_receiving = threading.Thread(target=self.thread_receiving)
+        self.thread_receiving.daemon = False
+        self.thread_receiving.start()
+
+    def thread_receiving(self):
+        while True:
+            # print(1111)
+            res = self.server_map_nodes['discriminator'].recv(self.max_data_size)
+            by = b''
+            by += res
+            data = json.loads(by.decode("utf-8"))
+            if data['succ'] == "True":
+                self.succ = 1
+                print('receiving finished')
+                break
+
 
     def checking(self):
         while True:
@@ -72,6 +89,8 @@ class server_nodes:
     def initial_connection(self):
         for node_name in self.node_info:
             print(node_name)
+            if node_name == self.server_name:
+                continue
             self.server_map_nodes[node_name] = None
             host_ip = self.node_info[node_name]["ip"]
             host_port = self.node_info[node_name]["port"]
@@ -81,6 +100,27 @@ class server_nodes:
             send_socket.connect((host_ip, int(host_port)))
 
             print('connected with nodes:', node_name, host_ip, host_port)
+
+    def check_coprime(self, x, y):
+        if x == 1 and y == 1:
+            return True
+        elif x < 0 or y < 0 or x == y:
+            return False
+        elif x == 1 or y == 1:
+            return True
+        else:
+            tmp = 0
+            while True:
+                tmp = x % y
+                if tmp == 0:
+                    break
+                else:
+                    x = y
+                    y = tmp
+            if y == 1:
+                return True
+            else:
+                return False
 
     def initial_listen(self):
         for node_name in self.master_info:
@@ -92,7 +132,7 @@ class server_nodes:
                 self.server_map_client[node_name].setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 # print(host_ip)
                 self.server_map_client[node_name].bind((host_ip, int(host_port)))
-                self.server_map_client[node_name].listen(80)
+                self.server_map_client[node_name].listen(5)
                 print("server starts")
                 print("ip and port: " + host_ip + ":" + host_port)
 
@@ -108,31 +148,6 @@ class server_nodes:
                 map_[self.node_list[i]] = [0 + i * block_size, 18446744073709551616]
         print ('map_', map_)
         return map_
-    # def assign_split(self, range_):
-    #     map_ = dict()
-    #     range_ -= 1
-    #     length = len(self.node_list)
-    #     block_size = (8315161629989076991 - 8315161629989011456) / length
-    #     for i in range(length):
-    #         if i < length - 1:
-    #             map_[self.node_list[i]] = [8315161629989011456 + i * block_size, 8315161629989011456 + (i + 1) * block_size]
-    #         else:
-    #             map_[self.node_list[i]] = [8315161629989011456 + i * block_size, 8315161629989076991]
-    #     print ('map_', map_)
-    #     return map_
-    def assign_split(self, range_):
-        map_ = dict()
-        range_ -= 1
-        length = len(self.node_list)
-        block_size = (8315333761986199551 - 8315052287009488896) / length
-        for i in range(length):
-            if i < length - 1:
-                map_[self.node_list[i]] = [8315052287009488896 + i * block_size, 8315052287009488896 + (i + 1) * block_size]
-            else:
-                map_[self.node_list[i]] = [8315052287009488896 + i * block_size, 8315333761986199551]
-        print ('map_', map_)
-        return map_
-
     # def assign_split(self, range_):
     #     map_ = dict()
     #     range_ -= 1
@@ -196,23 +211,59 @@ class server_nodes:
             by += data_re
             data = json.loads(by.decode("utf-8"))
             print("data", data)
-            if data['finished'] == "True":
-                mes = {}
-                mes['finished'] = "True"
-                mes = json.dumps(mes).encode('utf-8')
-                for server_ in self.node_info:
-                    if server_ != self.server_name:
-                        self.server_map_nodes[server_].sendall(mes)
-                break
-            cipher = data['cipher']
-            key = data['key']
-            assign_map = self.assign_split(64)
-            thread_list = []
-            for i in range(len(self.node_list)):
-                thread_list.append(threading.Thread(target=self.handling, args = (conn, cipher, assign_map[self.node_list[i]], self.node_list[i], key)))
-                thread_list[i].daemon = False
-            for i in range(len(self.node_list)):
-                thread_list[i].start()
+            num = 0
+            copime = []
+            while True:
+                self.key_pub = int(data['key_pub'])
+                if self.check_coprime(num, self.key_pub):
+                    copime.append(num)
+                num += 1
+                if len(copime) == 100:
+                    time.sleep(0.5)
+                    mes = {}
+                    mes['copime'] = copime
+                    mes['private'] = data['key_pri']
+                    self.key_pri = data['key_pri']
+                    mes = json.dumps(mes).encode('utf-8')
+                    self.server_map_nodes['discriminator'].sendall(mes)
+                    copime = []
+                if self.succ == 1:
+                    print('finish')
+                    break
+            data = {}
+            # print('finished')
+            data['succ'] = "True"
+            data['pred_key'] = self.key_pri
+            print('succ')
+            mes = json.dumps(data).encode('utf-8')
+            conn.sendall(mes)
+
+
+
+            # data_re = conn.recv(self.max_data_size)
+            # if not data_re:
+            #     break
+            # by = b''
+            # by += data_re
+            # data = json.loads(by.decode("utf-8"))
+            # print("data", data)
+            # if data['finished'] == "True":
+            #     mes = {}
+            #     mes['finished'] = "True"
+            #     mes = json.dumps(mes).encode('utf-8')
+            #     for server_ in self.node_info:
+            #         if server_ != self.server_name:
+            #             self.server_map_nodes[server_].sendall(mes)
+            #     break
+            # cipher = data['cipher']
+            # key = data['key']
+            # assign_map = self.assign_split(64)
+            # thread_list = []
+            # for i in range(len(self.node_list)):
+            #     thread_list.append(threading.Thread(target=self.handling, args = (conn, cipher, assign_map[self.node_list[i]], self.node_list[i], key)))
+            #     thread_list[i].daemon = False
+            # for i in range(len(self.node_list)):
+            #     thread_list[i].start()
 
 
     def server_start(self):
